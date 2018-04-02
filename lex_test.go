@@ -105,6 +105,61 @@ var lexTests = []lexTest{
 			tEOF,
 		},
 	},
+	{
+		"union pipes",
+		`union SearchResult = Photo | Person
+
+		type Person {
+			name: String
+			age: Int
+		}
+
+		type Photo {
+			height: Int
+			width: Int
+		}
+
+		type SearchQuery {
+			firstSearchResult: SearchResult
+		}`,
+		[]item{
+			mkItem(itemUnion, "union"),
+			mkItem(itemIdentifier, "SearchResult"),
+			mkItem(itemEqual, "="),
+			mkItem(itemIdentifier, "Photo"),
+			mkItem(itemPipe, "|"),
+			mkItem(itemIdentifier, "Person"),
+			mkItem(itemUnionEnd, "\n"),
+			tType,
+			mkItem(itemIdentifier, "Person"),
+			tBlockStart,
+			mkItem(itemIdentifier, "name"),
+			mkItem(itemColon, ":"),
+			mkItem(itemIdentifier, "String"),
+			mkItem(itemIdentifier, "age"),
+			mkItem(itemColon, ":"),
+			mkItem(itemIdentifier, "Int"),
+			tBlockEnd,
+			tType,
+			mkItem(itemIdentifier, "Photo"),
+			tBlockStart,
+			mkItem(itemIdentifier, "height"),
+			mkItem(itemColon, ":"),
+			mkItem(itemIdentifier, "Int"),
+			mkItem(itemIdentifier, "width"),
+			mkItem(itemColon, ":"),
+			mkItem(itemIdentifier, "Int"),
+			tBlockEnd,
+			tType,
+			mkItem(itemIdentifier, "SearchQuery"),
+			tBlockStart,
+			mkItem(itemIdentifier, "firstSearchResult"),
+			mkItem(itemColon, ":"),
+			mkItem(itemIdentifier, "SearchResult"),
+			tBlockEnd,
+			tEOF,
+		},
+	},
 }
 
 func TestLex(t *testing.T) {

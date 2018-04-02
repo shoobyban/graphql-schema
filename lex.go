@@ -49,22 +49,23 @@ func (i item) String() string {
 const (
 	// Special tokens
 	itemError        token = iota
-	itemColon                      // :
-	itemComma                      // ,
-	itemEqual                      // =
-	itemExclamation          // !
-	itemPipe                        // |
-	itemEOF                          // EOF
-	itemIdentifier            // alphanumeric (plus '_') identifier
-	itemLeftParen              // '('
-	itemRightParen            // ')'
-	itemLeftBracket          // '['
-	itemRightBracket        // ']'
-	itemSpace                      // run of spaces separating arguments
-	itemStringValue          // String value enclosed by """ and """
+	itemColon              // :
+	itemComma              // ,
+	itemEqual              // =
+	itemExclamation        // !
+	itemPipe               // |
+	itemEOF                // EOF
+	itemIdentifier         // alphanumeric (plus '_') identifier
+	itemLeftParen          // '('
+	itemRightParen         // ')'
+	itemLeftBracket        // '['
+	itemRightBracket       // ']'
+	itemSpace              // run of spaces separating arguments
+	itemStringValue        // String value enclosed by """ and """
 
 	itemBlockStart // Definition block start
 	itemBlockEnd   // Definition block end
+	itemUnionEnd   // Union definition's end
 
 	// Keywords after this
 	itemKeyword // used only to delimit the keywords
@@ -98,6 +99,7 @@ var LexNames = map[token]string{
 
 	itemBlockStart: "block start",
 	itemBlockEnd:   "block end",
+	itemUnionEnd:   "union end",
 
 	// Keywords after this
 	itemKeyword: "keyword",
@@ -283,7 +285,7 @@ func (l *lexer) atTerminator() bool {
 		return true
 	}
 	switch r {
-	case eof, ':', ')', '(', ',', ']', '!':
+	case eof, ':', ')', '(', ',', ']', '!', '|':
 		return true
 	}
 	return false
@@ -326,6 +328,26 @@ func lexComment(l *lexer) stateFn {
 	}
 }
 
+func lexUnion(l *lexer) stateFn {
+	l.push(lexUnion)
+	for {
+		switch r := l.next(); {
+		case isAlphaNumeric(r):
+			l.backup()
+			return lexIdentifier
+		case r == '=':
+			l.emit(itemEqual)
+		case r == '|':
+			l.emit(itemPipe)
+		case r == eof || isEndOfLine(r):
+			l.emit(itemUnionEnd)
+			l.pop()
+			return l.last()
+		}
+		l.ignore()
+	}
+}
+
 // lexIdentifier scans an alphanumeric.
 func lexIdentifier(l *lexer) stateFn {
 	for {
@@ -339,6 +361,9 @@ func lexIdentifier(l *lexer) stateFn {
 				return l.errorf("bad character %#U", r)
 			}
 			switch {
+			case word == "union":
+				l.emit(key[word])
+				return lexUnion
 			case key[word] > itemKeyword:
 				l.emit(key[word])
 			default:

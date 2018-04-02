@@ -13,39 +13,11 @@ import (
 
 var debug = flag.Bool("debug", false, "show the errors produced by the main tests")
 
-type parseTest struct {
-	name   string
-	input  string
-	ok     bool
-	result graphql.SchemaConfig // what the user would see in an error message.
-}
-
-const (
-	noError  = true
-	hasError = false
-)
-
 type T struct {
 	Name     string
 	Query    string
 	Schema   graphql.Schema
 	Expected interface{}
-}
-
-func TestGraphql(t *testing.T) {
-	for _, test := range Tests {
-		params := graphql.Params{
-			Schema:        test.Schema,
-			RequestString: test.Query,
-		}
-		result := graphql.Do(params)
-		if len(result.Errors) > 0 {
-			t.Fatalf("%s: wrong result, unexpected errors: %v", test.Name, result.Errors)
-		}
-		if !reflect.DeepEqual(result, test.Expected) {
-			t.Fatalf("%s: wrong result, query: %v, graphql result diff: %v", test.Name, test.Query, testutil.Diff(test.Expected, result))
-		}
-	}
 }
 
 var Tests = []T{
@@ -150,4 +122,65 @@ var Tests = []T{
 			},
 		},
 	},
+	/*{
+		Name: "unions",
+		Query: `
+		query {
+			list {
+				name
+			}
+		}
+		`,
+		Schema: MustBuildSchema(`
+			type A {
+				name: String
+			}
+			type B {
+				name: String
+				lenght: Int
+			}
+			union Item = A | B
+			type Query {
+				list: [Item]
+			}
+			`, map[string]graphql.FieldResolveFn{
+			"list": func(p graphql.ResolveParams) (interface{}, error) {
+				type A struct {
+					Name string
+				}
+				type B struct {
+					Name   string
+					Lenght int
+				}
+				return []interface{}{
+					A{Name: "Some A"},
+					B{Name: "Some B", Lenght: 100},
+				}, nil
+			},
+		}),
+		Expected: &graphql.Result{
+			Data: map[string]interface{}{
+				"search": []interface{}{
+					"Some A",
+					"Some B",
+				},
+			},
+		},
+	}, */
+}
+
+func TestGraphql(t *testing.T) {
+	for _, test := range Tests {
+		params := graphql.Params{
+			Schema:        test.Schema,
+			RequestString: test.Query,
+		}
+		result := graphql.Do(params)
+		if len(result.Errors) > 0 {
+			t.Fatalf("%s: wrong result, unexpected errors: %v", test.Name, result.Errors)
+		}
+		if !reflect.DeepEqual(result, test.Expected) {
+			t.Fatalf("%s: wrong result, query: %v, graphql result diff: %v", test.Name, test.Query, testutil.Diff(test.Expected, result))
+		}
+	}
 }

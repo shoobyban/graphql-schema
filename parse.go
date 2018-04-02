@@ -9,6 +9,10 @@ import (
 
 type parseContext struct {
 	lex       *lexer
+	funcs     map[string]graphql.FieldResolveFn
+	scalars   map[string]graphql.Type
+	objects   map[string]*graphql.Object
+	unions    map[string]*graphql.Union
 	Root      *parseContext
 	token     [10]item
 	peekCount int
@@ -18,7 +22,7 @@ type parseContext struct {
 var funcs = map[string]graphql.FieldResolveFn{}
 
 // Scalar types declared by the schema
-var types = map[string]graphql.Type{
+var builtinscalars = map[string]graphql.Type{
 	"ID":      graphql.ID,
 	"String":  graphql.String,
 	"Float":   graphql.Float,
@@ -39,8 +43,12 @@ func MustBuildSchema(schema string, resolvers map[string]graphql.FieldResolveFn)
 func BuildSchemaConfig(schema string, resolvers map[string]graphql.FieldResolveFn) (graphql.SchemaConfig, error) {
 	funcs = resolvers
 	schemaConfig := graphql.SchemaConfig{}
-	t := &parseContext{}
-	t.lex = lex("", schema)
+	t := &parseContext{
+		lex:     lex("", schema),
+		scalars: builtinscalars,
+		objects: map[string]*graphql.Object{},
+		unions:  map[string]*graphql.Union{},
+	}
 	t.backup()
 	for {
 		n := t.next()
@@ -49,6 +57,8 @@ func BuildSchemaConfig(schema string, resolvers map[string]graphql.FieldResolveF
 			return schemaConfig, nil
 		case n.typ == itemType:
 			t.processTypeNode(&schemaConfig)
+		case n.typ == itemUnion:
+			t.processUnionNode()
 		}
 	}
 
@@ -65,10 +75,56 @@ func (t *parseContext) dumpTokens() {
 	}
 }
 
+func (t *parseContext) processUnionNode() {
+	n := t.next()
+	if n.typ != itemIdentifier {
+		t.errorf("No identifier after union keyword, got t: %#v, v: %#v", LexNames[n.typ], n.val)
+	}
+	x := t.next()
+	if x.typ != itemEqual {
+		t.errorf("No '=' sign after union keyword, got t: %#v, v: %#v", LexNames[x.typ], x.val)
+	}
+	types := []*graphql.Object{}
+	lastispipe := false
+Loop:
+	for {
+		x = t.next()
+		if x.typ == itemPipe {
+			if lastispipe {
+				t.errorf("Double | in union")
+			}
+			lastispipe = true
+			continue Loop
+		}
+		if x.typ == itemUnionEnd {
+			if lastispipe {
+				t.errorf("Last item is |")
+			}
+			break Loop
+		}
+		if x.typ != itemIdentifier {
+			t.errorf("No label after block start, got t: %#v, v: %#v", LexNames[x.typ], x.val)
+		}
+		label := x.val
+		if _, ok := t.objects[x.val]; !ok {
+			t.errorf("Not declared object type (yet) '%s'", x.val)
+		}
+		types = append(types, t.objects[label])
+		lastispipe = false
+	}
+
+	t.unions[n.val] = graphql.NewUnion(
+		graphql.UnionConfig{
+			Name:  n.val,
+			Types: types,
+		},
+	)
+}
+
 func (t *parseContext) processTypeNode(schemaConfig *graphql.SchemaConfig) {
 	n := t.next()
 	if n.typ != itemIdentifier {
-		t.errorf("No identifier after type, got t: %#v, v: %#v", LexNames[n.typ], n.val)
+		t.errorf("No identifier after type keyword, got t: %#v, v: %#v", LexNames[n.typ], n.val)
 	}
 	x := t.next()
 	if x.typ != itemBlockStart {
@@ -114,13 +170,22 @@ Loop:
 
 		fields[label] = &graphql.Field{}
 
-		if _, ok := types[tname]; !ok {
+		if _, ok := t.scalars[tname]; !ok {
+			if _, ok := t.objects[tname]; !ok {
+				if _, ok := t.unions[tname]; !ok {
+					t.errorf("Not declared scalar,object type or union (yet) '%s'", x.val)
+				} else {
+					vtype = t.unions[tname]
+				}
+			} else {
+				vtype = t.objects[tname]
+			}
 		} else {
-			vtype = types[tname]
+			vtype = t.scalars[tname]
 		}
 
 		if isArray {
-			vtype = graphql.NewList(types[tname])
+			vtype = graphql.NewList(vtype)
 		}
 
 		fields[label].Type = vtype
@@ -142,7 +207,7 @@ Loop:
 			},
 		)
 	} else {
-		types[n.val] = graphql.NewObject(
+		t.objects[n.val] = graphql.NewObject(
 			graphql.ObjectConfig{
 				Name:   n.val,
 				Fields: fields,
@@ -164,12 +229,22 @@ func (t *parseContext) handleParams() graphql.FieldConfigArgument {
 			t.errorf("No colon after label, got t: %#v, v: %#v", LexNames[x.typ], x.val)
 		}
 		x = t.next()
-		if _, ok := types[x.val]; !ok {
-			t.errorf("Not declared type (yet) '%s'", x.val)
-		} else {
-			args[label] = &graphql.ArgumentConfig{
-				Type: types[x.val],
+		var vtype graphql.Output
+		if _, ok := t.scalars[x.val]; !ok {
+			if _, ok := t.objects[x.val]; !ok {
+				if _, ok := t.unions[x.val]; !ok {
+					t.errorf("Not declared scalar,object type or union (yet) '%s'", x.val)
+				} else {
+					vtype = t.unions[x.val]
+				}
+			} else {
+				vtype = t.objects[x.val]
 			}
+		} else {
+			vtype = t.scalars[x.val]
+		}
+		args[label] = &graphql.ArgumentConfig{
+			Type: vtype,
 		}
 		x = t.next()
 		if x.typ == itemRightParen {
