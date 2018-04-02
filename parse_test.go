@@ -2,7 +2,6 @@ package schema
 
 import (
 	"flag"
-	"fmt"
 	"reflect"
 	"testing"
 
@@ -29,52 +28,6 @@ type T struct {
 	Query    string
 	Schema   graphql.Schema
 	Expected interface{}
-}
-
-var parseTests = []parseTest{
-	// {"empty", "", noError, graphql.SchemaConfig{}},
-	// {"comment", "#comment", noError, graphql.SchemaConfig{}},
-	// {"spaces", " \t\n", noError, graphql.SchemaConfig{}},
-	{"hello", "type Query {\n hello: String \n}\n", noError,
-		graphql.SchemaConfig{Query: graphql.NewObject(graphql.ObjectConfig{
-			Name: "RootQuery",
-			Fields: graphql.Fields{
-				"hello": &graphql.Field{
-					Type: graphql.String,
-					Resolve: func(p graphql.ResolveParams) (interface{}, error) {
-						return "world", nil
-					},
-				},
-			}})}},
-}
-
-func TestBuildSchema(t *testing.T) {
-	for _, test := range parseTests {
-		schemaConfig, err := BuildSchemaConfig(test.input,
-			map[string]graphql.FieldResolveFn{
-				"hello": func(p graphql.ResolveParams) (interface{}, error) {
-					return "world", nil
-				},
-			})
-		switch {
-		case err == nil && !test.ok:
-			t.Errorf("%q: expected error; got none", test.name)
-			continue
-		case err != nil && test.ok:
-			t.Errorf("%q: unexpected error: %v", test.name, err)
-			continue
-		case err != nil && !test.ok:
-			// expected error, got one
-			if *debug {
-				fmt.Printf("%s: %s\n\t%s\n", test.name, test.input, err)
-			}
-			continue
-		}
-
-		if !reflect.DeepEqual(schemaConfig, test.result) {
-			t.Errorf("%s expected %#v\n got\n%#v", test.name, test.result, schemaConfig)
-		}
-	}
 }
 
 func TestGraphql(t *testing.T) {
