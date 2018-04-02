@@ -7,10 +7,9 @@ import (
 	"github.com/graphql-go/graphql"
 )
 
-// Tree is just a simple AST
-type Tree struct {
+type parseContext struct {
 	lex       *lexer
-	Root      *Tree
+	Root      *parseContext
 	token     [10]item
 	peekCount int
 }
@@ -40,7 +39,7 @@ func MustBuildSchema(schema string, resolvers map[string]graphql.FieldResolveFn)
 func BuildSchemaConfig(schema string, resolvers map[string]graphql.FieldResolveFn) (graphql.SchemaConfig, error) {
 	funcs = resolvers
 	schemaConfig := graphql.SchemaConfig{}
-	t := &Tree{}
+	t := &parseContext{}
 	t.lex = lex("", schema)
 	t.backup()
 	for {
@@ -56,7 +55,7 @@ func BuildSchemaConfig(schema string, resolvers map[string]graphql.FieldResolveF
 }
 
 // dumpTokens is only used for debugging
-func (t *Tree) dumpTokens() {
+func (t *parseContext) dumpTokens() {
 	for {
 		n := t.next()
 		fmt.Printf("t: %#v, v: %#v\n", LexNames[n.typ], n.val)
@@ -66,7 +65,7 @@ func (t *Tree) dumpTokens() {
 	}
 }
 
-func (t *Tree) processTypeNode(schemaConfig *graphql.SchemaConfig) {
+func (t *parseContext) processTypeNode(schemaConfig *graphql.SchemaConfig) {
 	n := t.next()
 	if n.typ != itemIdentifier {
 		t.errorf("No identifier after type, got t: %#v, v: %#v", LexNames[n.typ], n.val)
@@ -152,7 +151,7 @@ Loop:
 	}
 }
 
-func (t *Tree) handleParams() graphql.FieldConfigArgument {
+func (t *parseContext) handleParams() graphql.FieldConfigArgument {
 	args := graphql.FieldConfigArgument{}
 	for {
 		x := t.next()
@@ -182,8 +181,8 @@ func (t *Tree) handleParams() graphql.FieldConfigArgument {
 	}
 }
 
-// IsEmptyTree reports whether this tree (node) is empty of everything but space.
-func (t *Tree) isEmpty() bool {
+// IsEmptyTree reports whether this parseContext (node) is empty of everything but space.
+func (t *parseContext) isEmpty() bool {
 	if t.Root == nil {
 		return false
 	}
@@ -191,19 +190,19 @@ func (t *Tree) isEmpty() bool {
 }
 
 // errorf formats the error and terminates processing.
-func (t *Tree) errorf(format string, args ...interface{}) {
+func (t *parseContext) errorf(format string, args ...interface{}) {
 	t.Root = nil
 	format = fmt.Sprintf("schema: %d: %s", t.token[0].line, format)
 	panic(fmt.Errorf(format, args...))
 }
 
 // error terminates processing.
-func (t *Tree) error(err error) {
+func (t *parseContext) error(err error) {
 	t.errorf("%s", err)
 }
 
 // expect consumes the next token and guarantees it has the required type.
-func (t *Tree) expect(expected token, context string) item {
+func (t *parseContext) expect(expected token, context string) item {
 	token := t.nextNonSpace()
 	if token.typ != expected {
 		t.unexpected(token, context)
@@ -212,7 +211,7 @@ func (t *Tree) expect(expected token, context string) item {
 }
 
 // expectOneOf consumes the next token and guarantees it has one of the required types.
-func (t *Tree) expectOneOf(expectedTokens []token, context string) item {
+func (t *parseContext) expectOneOf(expectedTokens []token, context string) item {
 	token := t.nextNonSpace()
 	found := false
 	var foundItem item
@@ -229,12 +228,12 @@ func (t *Tree) expectOneOf(expectedTokens []token, context string) item {
 }
 
 // unexpected complains about the token and terminates processing.
-func (t *Tree) unexpected(token item, context string) {
+func (t *parseContext) unexpected(token item, context string) {
 	t.errorf("unexpected %s in %s", token, context)
 }
 
 // recover is the handler that turns panics into returns from the top level of Parse.
-func (t *Tree) recover(errp *error) {
+func (t *parseContext) recover(errp *error) {
 	e := recover()
 	if e != nil {
 		if _, ok := e.(runtime.Error); ok {
@@ -248,7 +247,7 @@ func (t *Tree) recover(errp *error) {
 }
 
 // next returns the next token.
-func (t *Tree) next() item {
+func (t *parseContext) next() item {
 	if t.peekCount > 0 {
 		t.peekCount--
 	} else {
@@ -258,27 +257,27 @@ func (t *Tree) next() item {
 }
 
 // backup backs the input stream up one token.
-func (t *Tree) backup() {
+func (t *parseContext) backup() {
 	t.peekCount++
 }
 
 // backup2 backs the input stream up two tokens.
 // The zeroth token is already there.
-func (t *Tree) backup2(t1 item) {
+func (t *parseContext) backup2(t1 item) {
 	t.token[1] = t1
 	t.peekCount = 2
 }
 
 // backup3 backs the input stream up three tokens
 // The zeroth token is already there.
-func (t *Tree) backup3(t2, t1 item) { // Reverse order: we're pushing back.
+func (t *parseContext) backup3(t2, t1 item) { // Reverse order: we're pushing back.
 	t.token[1] = t1
 	t.token[2] = t2
 	t.peekCount = 3
 }
 
 // peek returns but does not consume the next token.
-func (t *Tree) peek() item {
+func (t *parseContext) peek() item {
 	fmt.Println(t.token)
 	if t.peekCount > 0 {
 		return t.token[t.peekCount-1]
@@ -289,7 +288,7 @@ func (t *Tree) peek() item {
 }
 
 // nextNonSpace returns the next non-space token.
-func (t *Tree) nextNonSpace() (token item) {
+func (t *parseContext) nextNonSpace() (token item) {
 	for {
 		token = t.next()
 		if token.typ != itemSpace {
@@ -300,7 +299,7 @@ func (t *Tree) nextNonSpace() (token item) {
 }
 
 // peekNonSpace returns but does not consume the next non-space token.
-func (t *Tree) peekNonSpace() (token item) {
+func (t *parseContext) peekNonSpace() (token item) {
 	for {
 		token = t.next()
 		if token.typ != itemSpace {
