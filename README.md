@@ -38,3 +38,70 @@ func main() {
 	fmt.Println(result)
 }
 ```
+
+Type declarations:
+
+```go
+package main
+
+import (
+	"fmt"
+	"strconv"
+
+	"github.com/graphql-go/graphql"
+	schema "github.com/shoobyban/graphql-schema"
+)
+
+func main() {
+	params := graphql.Params{
+		Schema: schema.MustBuildSchema(`
+			type Starship {
+				name: String
+    		}
+
+			type Human {
+				name: String
+				appearsIn: String
+				starships: Starship
+			}
+
+			type Query {
+				human(id: ID): Human
+			}			  
+			`, map[string]graphql.FieldResolveFn{
+			"human": func(p graphql.ResolveParams) (interface{}, error) {
+				type starship struct {
+					Name string
+				}
+				type human struct {
+					Name      string
+					AppearsIn string
+					Starships starship
+				}
+				id, _ := strconv.Atoi(p.Args["id"].(string))
+				humans := map[int]human{
+					1002: {
+						Name:      "Han Solo",
+						AppearsIn: "NEWHOPE",
+						Starships: starship{Name: "Millenium Falcon"},
+					},
+				}
+				return humans[id], nil
+			},
+		}),
+		RequestString: `
+		query {
+			human(id: 1002) {
+				name
+				appearsIn
+				starships {
+					name
+				}
+			}
+		}
+		`,
+	}
+	result := graphql.Do(params)
+	fmt.Printf("%#v\n", result)
+}
+```

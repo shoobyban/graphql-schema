@@ -92,9 +92,6 @@ Loop:
 			t.errorf("No label after block start, got t: %#v, v: %#v", LexNames[x.typ], x.val)
 		}
 		label := x.val
-		if _, ok := funcs[label]; !ok {
-			t.errorf("No such resolver function '%s'", label)
-		}
 		x = t.next()
 		if x.typ == itemLeftParen {
 			params = t.handleParams()
@@ -107,38 +104,23 @@ Loop:
 		if x.typ != itemIdentifier {
 			t.errorf("No type identifier after label, t: %#v, v: %#v", LexNames[x.typ], x.val)
 		}
+		fields[label] = &graphql.Field{}
 		if _, ok := scalars[x.val]; !ok {
 			if _, ok := objects[x.val]; !ok {
 				t.errorf("Not declared type (yet) '%s'", x.val)
 			} else {
-				if params != nil {
-					fields[label] = &graphql.Field{
-						Type:    objects[x.val],
-						Args:    params,
-						Resolve: funcs[label],
-					}
-				} else {
-					fields[label] = &graphql.Field{
-						Type:    objects[x.val],
-						Resolve: funcs[label],
-					}
-				}
+				fields[label].Type = objects[x.val]
 			}
 		} else {
-			if params != nil {
-				fields[label] = &graphql.Field{
-					Type:    scalars[x.val],
-					Args:    params,
-					Resolve: funcs[label],
-				}
-			} else {
-				fields[label] = &graphql.Field{
-					Type:    scalars[x.val],
-					Resolve: funcs[label],
-				}
-			}
+			fields[label].Type = scalars[x.val]
 		}
-		params = nil
+		if params != nil {
+			fields[label].Args = params
+			params = nil
+		}
+		if _, ok := funcs[label]; ok {
+			fields[label].Resolve = funcs[label]
+		}
 	}
 	if n.val == "Query" {
 		schemaConfig.Query = graphql.NewObject(
