@@ -9,12 +9,15 @@ import (
 	"unicode/utf8"
 )
 
-type Pos int
+type pos int
+
+// token type for parser
+type token int
 
 // item represents a token or text string returned from the scanner.
 type item struct {
-	typ  Token  // The type of this item.
-	pos  Pos    // The starting position, in bytes, of this item in the input string.
+	typ  token  // The type of this item.
+	pos  pos    // The starting position, in bytes, of this item in the input string.
 	val  string // The value of this item.
 	line int    // The line number at the start of this item.
 }
@@ -43,24 +46,22 @@ func (i item) String() string {
 	return fmt.Sprintf("'%q'", i.val)
 }
 
-// Token type for parser
-type Token int
-
 const (
 	// Special tokens
-	itemError        Token = iota
-	itemColon              // :
-	itemComma              // ,
-	itemEqual              // =
-	itemExclamation        // !
-	itemEOF                // EOF
-	itemIdentifier         // alphanumeric (plus '_') identifier
-	itemLeftParen          // '('
-	itemRightParen         // ')'
-	itemLeftBracket        // '['
-	itemRightBracket       // ']'
-	itemSpace              // run of spaces separating arguments
-	itemStringValue        // String value enclosed by """ and """
+	itemError        token = iota
+	itemColon                      // :
+	itemComma                      // ,
+	itemEqual                      // =
+	itemExclamation          // !
+	itemPipe                        // |
+	itemEOF                          // EOF
+	itemIdentifier            // alphanumeric (plus '_') identifier
+	itemLeftParen              // '('
+	itemRightParen            // ')'
+	itemLeftBracket          // '['
+	itemRightBracket        // ']'
+	itemSpace                      // run of spaces separating arguments
+	itemStringValue          // String value enclosed by """ and """
 
 	itemBlockStart // Definition block start
 	itemBlockEnd   // Definition block end
@@ -79,11 +80,12 @@ const (
 )
 
 // LexNames is used for debugging
-var LexNames = map[Token]string{
+var LexNames = map[token]string{
 	itemError:        "Error",
 	itemColon:        ":",
 	itemComma:        ",",
 	itemEqual:        "=",
+	itemPipe:         "|",
 	itemExclamation:  "!",
 	itemEOF:          "EOF",
 	itemIdentifier:   "identifier",
@@ -110,7 +112,7 @@ var LexNames = map[Token]string{
 	itemImplements: "implements",
 }
 
-var key = map[string]Token{
+var key = map[string]token{
 	"schema":     itemSchema,
 	"type":       itemType,
 	"enum":       itemEnum,
@@ -128,41 +130,40 @@ const eof = -1
 // stateFn represents the state of the scanner as a function that returns the next state.
 type stateFn func(*lexer) stateFn
 
-var fnStack = []stateFn{}
-
-func push(f stateFn) {
-	ln := len(fnStack)
-	if ln > 0 && reflect.ValueOf(fnStack[ln-1]) == reflect.ValueOf(f) {
-		return
-	}
-	fnStack = append(fnStack, f)
-}
-
-func pop() stateFn {
-	ln := len(fnStack)
-	if ln == 0 {
-		return nil
-	}
-	last := fnStack[ln-1]
-	fnStack = fnStack[:ln-1]
-	return last
-}
-
-func last() stateFn {
-	ln := len(fnStack)
-	return fnStack[ln-1]
-}
-
 // lexer holds the state of the scanner.
 type lexer struct {
 	name       string    // the name of the input; used only for error reports
 	input      string    // the string being scanned
-	pos        Pos       // current position in the input
-	start      Pos       // start position of this item
-	width      Pos       // width of last rune read from input
+	pos        pos       // current position in the input
+	start      pos       // start position of this item
+	width      pos       // width of last rune read from input
 	items      chan item // channel of scanned items
 	parenDepth int       // nesting depth of ( ) exprs
 	line       int       // 1+number of newlines seen
+	fnStack    []stateFn // Stack for stateFn to know where to return
+}
+
+func (l *lexer) push(f stateFn) {
+	ln := len(l.fnStack)
+	if ln > 0 && reflect.ValueOf(l.fnStack[ln-1]) == reflect.ValueOf(f) {
+		return
+	}
+	l.fnStack = append(l.fnStack, f)
+}
+
+func (l *lexer) pop() stateFn {
+	ln := len(l.fnStack)
+	if ln == 0 {
+		return nil
+	}
+	last := l.fnStack[ln-1]
+	l.fnStack = l.fnStack[:ln-1]
+	return last
+}
+
+func (l *lexer) last() stateFn {
+	ln := len(l.fnStack)
+	return l.fnStack[ln-1]
 }
 
 // next returns the next rune in the input.
@@ -172,7 +173,7 @@ func (l *lexer) next() rune {
 		return eof
 	}
 	r, w := utf8.DecodeRuneInString(l.input[l.pos:])
-	l.width = Pos(w)
+	l.width = pos(w)
 	l.pos += l.width
 	if r == '\n' {
 		l.line++
@@ -197,7 +198,7 @@ func (l *lexer) backup() {
 }
 
 // emit passes an item back to the client.
-func (l *lexer) emit(t Token) {
+func (l *lexer) emit(t token) {
 	l.items <- item{t, l.start, l.input[l.start:l.pos], l.line}
 	// Some items contain text internally. If so, count their newlines.
 	switch t {
@@ -211,22 +212,6 @@ func (l *lexer) emit(t Token) {
 func (l *lexer) ignore() {
 	l.line += strings.Count(l.input[l.start:l.pos], "\n")
 	l.start = l.pos
-}
-
-// accept consumes the next rune if it's from the valid set.
-func (l *lexer) accept(valid string) bool {
-	if strings.ContainsRune(valid, l.next()) {
-		return true
-	}
-	l.backup()
-	return false
-}
-
-// acceptRun consumes a run of runes from the valid set.
-func (l *lexer) acceptRun(valid string) {
-	for strings.ContainsRune(valid, l.next()) {
-	}
-	l.backup()
 }
 
 // errorf returns an error token and terminates the scan by passing
@@ -298,7 +283,7 @@ func (l *lexer) atTerminator() bool {
 		return true
 	}
 	switch r {
-	case eof, ':', ')', '(', ',', ']':
+	case eof, ':', ')', '(', ',', ']', '!':
 		return true
 	}
 	return false
@@ -308,7 +293,7 @@ func (l *lexer) atTerminator() bool {
 
 // lexSchema is outside of any definition, default state
 func lexSchema(l *lexer) stateFn {
-	push(lexSchema)
+	l.push(lexSchema)
 	switch r := l.next(); {
 	case r == eof:
 		l.emit(itemEOF)
@@ -335,7 +320,7 @@ func lexComment(l *lexer) stateFn {
 	for {
 		switch r := l.next(); {
 		case r == eof || isEndOfLine(r):
-			return last()
+			return l.last()
 		}
 		l.ignore()
 	}
@@ -343,7 +328,6 @@ func lexComment(l *lexer) stateFn {
 
 // lexIdentifier scans an alphanumeric.
 func lexIdentifier(l *lexer) stateFn {
-Loop:
 	for {
 		switch r := l.next(); {
 		case isAlphaNumeric(r):
@@ -360,37 +344,13 @@ Loop:
 			default:
 				l.emit(itemIdentifier)
 			}
-			break Loop
-		}
-	}
-	return last()
-}
-
-func lexProperty(l *lexer) stateFn {
-	push(lexProperty)
-	startPos := l.pos
-	for {
-		switch r := l.next(); {
-		case isSpace(r):
-			l.ignore()
-		case isAlphaNumeric(r):
-			l.backup()
-			return lexIdentifier
-		case r == '\n' || r == '}':
-			if l.pos == startPos {
-				return l.errorf("no value at %v", l.pos)
-			}
-			l.ignore()
-			pop()
-			return last()
-		default:
-			return l.errorf("unterminated property %v", string(r))
+			return l.last()
 		}
 	}
 }
 
 func lexArgs(l *lexer) stateFn {
-	push(lexArgs)
+	l.push(lexArgs)
 	startLine := l.line
 	for {
 		switch r := l.next(); {
@@ -414,6 +374,8 @@ func lexArgs(l *lexer) stateFn {
 			l.emit(itemComma)
 		case r == '!':
 			l.emit(itemExclamation)
+		case r == '=':
+			l.emit(itemEqual)
 		case r == '[':
 			l.emit(itemLeftBracket)
 			l.parenDepth++
@@ -425,14 +387,14 @@ func lexArgs(l *lexer) stateFn {
 			}
 		case r == ')':
 			l.emit(itemRightParen)
-			pop()
-			return last()
+			l.pop()
+			return l.last()
 		}
 	}
 }
 
 func lexBlock(l *lexer) stateFn {
-	push(lexBlock)
+	l.push(lexBlock)
 	startLine := l.line
 	for {
 		if strings.HasPrefix(l.input[l.pos:], "\"\"\"") {
@@ -474,22 +436,22 @@ func lexBlock(l *lexer) stateFn {
 		case r == '}':
 			l.ignore()
 			l.emit(itemBlockEnd)
-			pop()
-			return last()
+			l.pop()
+			return l.last()
 		}
 	}
 }
 
 // lexStringValue scans a string value. The left """ marker is known to be present.
 func lexStringValue(l *lexer) stateFn {
-	l.pos += Pos(3) // Length of """
+	l.pos += pos(3) // Length of """
 	l.ignore()
 	i := strings.Index(l.input[l.pos:], "\"\"\"")
 	if i < 0 {
 		return l.errorf("unclosed string at pos %#v", l.pos)
 	}
-	l.pos += Pos(i)
+	l.pos += pos(i)
 	l.emit(itemStringValue)
-	l.pos += Pos(3)
-	return last()
+	l.pos += pos(3)
+	return l.last()
 }

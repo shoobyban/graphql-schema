@@ -56,8 +56,8 @@ Loop:
 	return schemaConfig, nil
 }
 
-// DumpTokens is only used for debugging
-func (t *Tree) DumpTokens() {
+// dumpTokens is only used for debugging
+func (t *Tree) dumpTokens() {
 Loop:
 	for {
 		n := t.next()
@@ -205,7 +205,7 @@ func (t *Tree) error(err error) {
 }
 
 // expect consumes the next token and guarantees it has the required type.
-func (t *Tree) expect(expected Token, context string) item {
+func (t *Tree) expect(expected token, context string) item {
 	token := t.nextNonSpace()
 	if token.typ != expected {
 		t.unexpected(token, context)
@@ -214,7 +214,7 @@ func (t *Tree) expect(expected Token, context string) item {
 }
 
 // expectOneOf consumes the next token and guarantees it has one of the required types.
-func (t *Tree) expectOneOf(expectedTokens []Token, context string) item {
+func (t *Tree) expectOneOf(expectedTokens []token, context string) item {
 	token := t.nextNonSpace()
 	found := false
 	var foundItem item

@@ -12,7 +12,7 @@ type lexTest struct {
 }
 
 // Make the types prettyprint.
-var itemName = map[Token]string{
+var itemName = map[token]string{
 	itemError:       "error",
 	itemEOF:         "EOF",
 	itemColon:       ":",
@@ -35,7 +35,7 @@ var (
 	comment     = "# comment"
 )
 
-func (i Token) String() string {
+func (i token) String() string {
 	s := itemName[i]
 	if s == "" {
 		return fmt.Sprintf("item%d", int(i))
@@ -43,7 +43,7 @@ func (i Token) String() string {
 	return s
 }
 
-func mkItem(typ Token, text string) item {
+func mkItem(typ token, text string) item {
 	return item{
 		typ: typ,
 		val: text,
