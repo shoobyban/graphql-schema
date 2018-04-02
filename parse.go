@@ -36,7 +36,7 @@ func MustBuildSchema(schema string, resolvers map[string]graphql.FieldResolveFn)
 	return newSchema
 }
 
-// BuildSchemaConfig is
+// BuildSchemaConfig is creating a graphql.SchemaConfig from a given string
 func BuildSchemaConfig(schema string, resolvers map[string]graphql.FieldResolveFn) (graphql.SchemaConfig, error) {
 	funcs = resolvers
 	schemaConfig := graphql.SchemaConfig{}
