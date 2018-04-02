@@ -2,6 +2,7 @@ package schema
 
 import (
 	"flag"
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -63,7 +64,10 @@ func TestGraphql(t *testing.T) {
 			}
 			`, map[string]graphql.FieldResolveFn{
 				"hex": func(p graphql.ResolveParams) (interface{}, error) {
-					return "#000000", nil
+					r := p.Args["r"]
+					g := p.Args["g"]
+					b := p.Args["b"]
+					return fmt.Sprintf("#%02x%02x%02x", r, g, b), nil
 				},
 			}),
 			Expected: &graphql.Result{
