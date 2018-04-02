@@ -10,7 +10,7 @@ import (
 type parseContext struct {
 	lex       *lexer
 	funcs     map[string]graphql.FieldResolveFn
-	scalars   map[string]graphql.Type
+	scalars   map[string]*graphql.Scalar
 	objects   map[string]*graphql.Object
 	unions    map[string]*graphql.Union
 	Root      *parseContext
@@ -45,7 +45,7 @@ func BuildSchemaConfig(schema string, resolvers map[string]graphql.FieldResolveF
 	schemaConfig := graphql.SchemaConfig{}
 	t := &parseContext{
 		lex:     lex("", schema),
-		scalars: builtinscalars,
+		scalars: map[string]*graphql.Scalar{},
 		objects: map[string]*graphql.Object{},
 		unions:  map[string]*graphql.Union{},
 	}
@@ -166,22 +166,12 @@ Loop:
 				t.errorf("No closing ] after identifier, t: %#v, v: %#v", LexNames[x.typ], x.val)
 			}
 		}
-		var vtype graphql.Output
+		var vtype = t.getTypeValue(tname)
 
 		fields[label] = &graphql.Field{}
 
-		if _, ok := t.scalars[tname]; !ok {
-			if _, ok := t.objects[tname]; !ok {
-				if _, ok := t.unions[tname]; !ok {
-					t.errorf("Not declared scalar,object type or union (yet) '%s'", x.val)
-				} else {
-					vtype = t.unions[tname]
-				}
-			} else {
-				vtype = t.objects[tname]
-			}
-		} else {
-			vtype = t.scalars[tname]
+		if vtype == nil {
+			t.errorf("Not declared scalar,object type or union (yet) '%s'", x.val)
 		}
 
 		if isArray {
@@ -206,6 +196,7 @@ Loop:
 				Fields: fields,
 			},
 		)
+		schemaConfig.Types = t.getAllTypes()
 	} else {
 		t.objects[n.val] = graphql.NewObject(
 			graphql.ObjectConfig{
@@ -214,6 +205,47 @@ Loop:
 			},
 		)
 	}
+}
+
+func (t *parseContext) getTypeValue(name string) graphql.Type {
+	for n, t := range builtinscalars {
+		if n == name {
+			return t
+		}
+	}
+	for n, t := range t.scalars {
+		if n == name {
+			return t
+		}
+	}
+	for n, t := range t.objects {
+		if n == name {
+			return t
+		}
+	}
+	for n, t := range t.unions {
+		if n == name {
+			return t
+		}
+	}
+	return nil
+}
+
+func (t *parseContext) getAllTypes() []graphql.Type {
+	var tt = []graphql.Type{}
+	for _, t := range builtinscalars {
+		tt = append(tt, t)
+	}
+	for _, t := range t.scalars {
+		tt = append(tt, t)
+	}
+	for _, t := range t.objects {
+		tt = append(tt, t)
+	}
+	for _, t := range t.unions {
+		tt = append(tt, t)
+	}
+	return tt
 }
 
 func (t *parseContext) handleParams() graphql.FieldConfigArgument {
@@ -229,19 +261,9 @@ func (t *parseContext) handleParams() graphql.FieldConfigArgument {
 			t.errorf("No colon after label, got t: %#v, v: %#v", LexNames[x.typ], x.val)
 		}
 		x = t.next()
-		var vtype graphql.Output
-		if _, ok := t.scalars[x.val]; !ok {
-			if _, ok := t.objects[x.val]; !ok {
-				if _, ok := t.unions[x.val]; !ok {
-					t.errorf("Not declared scalar,object type or union (yet) '%s'", x.val)
-				} else {
-					vtype = t.unions[x.val]
-				}
-			} else {
-				vtype = t.objects[x.val]
-			}
-		} else {
-			vtype = t.scalars[x.val]
+		var vtype = t.getTypeValue(x.val)
+		if vtype == nil {
+			t.errorf("Not declared scalar,object type or union (yet) '%s'", x.val)
 		}
 		args[label] = &graphql.ArgumentConfig{
 			Type: vtype,
