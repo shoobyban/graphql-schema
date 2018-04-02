@@ -43,27 +43,25 @@ func BuildSchemaConfig(schema string, resolvers map[string]graphql.FieldResolveF
 	t := &Tree{}
 	t.lex = lex("", schema)
 	t.backup()
-Loop:
 	for {
 		n := t.next()
 		switch {
 		case n.typ == itemEOF:
-			break Loop
+			return schemaConfig, nil
 		case n.typ == itemType:
 			t.processTypeNode(&schemaConfig)
 		}
 	}
-	return schemaConfig, nil
+
 }
 
 // dumpTokens is only used for debugging
 func (t *Tree) dumpTokens() {
-Loop:
 	for {
 		n := t.next()
 		fmt.Printf("t: %#v, v: %#v\n", LexNames[n.typ], n.val)
 		if n.typ == itemEOF {
-			break Loop
+			return
 		}
 	}
 }
