@@ -4,7 +4,25 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/shoobyban/graphql-schema)](https://goreportcard.com/report/github.com/shoobyban/graphql-schema)
 [![Build Status](https://travis-ci.org/shoobyban/graphql-schema.svg?branch=master)](https://travis-ci.org/shoobyban/graphql-schema)
 
-Schema language parser for [graphql-go](https://github.com/graphql-go/graphql)
+GraphQL Schema language parser for [graphql-go](https://github.com/graphql-go/graphql) based on [GraphQL-js](https://github.com/graphql/graphql-js/)
+
+## Goals
+
+* [ ] full support of [GraphQL schema spec (October 2016)](https://facebook.github.io/graphql/)
+  * [x] simple Query declaration
+  * [x] type declarations (without interfaces)
+  * [x] arrays (list types)
+  * [x] argument handling
+  * [ ] argument '=' handling
+  * [ ] non-null check (!)
+  * [ ] interfaces, implements keyword
+  * [ ] scalar types
+  * [ ] union types, '|' character
+  * [ ] input types
+  * [ ] declaration order swapping
+  * [ ] whatever comes up that I haven't seen
+
+Caching the resulting schema object is probably a good practice GraphQL object as I made no effort of any premature optimisation.
 
 ## Usage
 
