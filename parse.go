@@ -18,14 +18,17 @@ type Tree struct {
 // Funcs declared functions
 var funcs = map[string]graphql.FieldResolveFn{}
 
-// Types declared by the schema
-var types = map[string]*graphql.Scalar{
+// Scalar types declared by the schema
+var scalars = map[string]*graphql.Scalar{
 	"ID":      graphql.ID,
 	"String":  graphql.String,
 	"Float":   graphql.Float,
 	"Int":     graphql.Int,
 	"Boolean": graphql.Boolean,
 }
+
+// Object types declared by the schema
+var objects = map[string]*graphql.Object{}
 
 // Parsing.
 
@@ -70,58 +73,84 @@ Loop:
 
 func (t *Tree) processTypeNode(schemaConfig *graphql.SchemaConfig) {
 	n := t.next()
-	if n.val == "Query" {
-		x := t.next()
-		if x.typ != itemBlockStart {
-			t.errorf("No block starting after Query, got t: %#v, v: %#v", LexNames[x.typ], x.val)
+	if n.typ != itemIdentifier {
+		t.errorf("No identifier after type, got t: %#v, v: %#v", LexNames[n.typ], n.val)
+	}
+	x := t.next()
+	if x.typ != itemBlockStart {
+		t.errorf("No block starting after Query, got t: %#v, v: %#v", LexNames[x.typ], x.val)
+	}
+	fields := graphql.Fields{}
+Loop:
+	for {
+		var params graphql.FieldConfigArgument
+		x = t.next()
+		if x.typ == itemBlockEnd {
+			break Loop
 		}
-		fields := graphql.Fields{}
-	Loop:
-		for {
-			var params graphql.FieldConfigArgument
+		if x.typ != itemIdentifier {
+			t.errorf("No label after block start, got t: %#v, v: %#v", LexNames[x.typ], x.val)
+		}
+		label := x.val
+		if _, ok := funcs[label]; !ok {
+			t.errorf("No such resolver function '%s'", label)
+		}
+		x = t.next()
+		if x.typ == itemLeftParen {
+			params = t.handleParams()
 			x = t.next()
-			if x.typ == itemBlockEnd {
-				break Loop
-			}
-			if x.typ != itemIdentifier {
-				t.errorf("No label after block start, got t: %#v, v: %#v", LexNames[x.typ], x.val)
-			}
-			label := x.val
-			if _, ok := funcs[label]; !ok {
-				t.errorf("No such resolver function '%s'", label)
-			}
-			x = t.next()
-			if x.typ == itemLeftParen {
-				params = t.handleParams()
-				x = t.next()
-			}
-			if x.typ != itemColon {
-				t.errorf("No colon or ( after label, t: %#v, v: %#v", LexNames[x.typ], x.val)
-			}
-			x = t.next()
-			if x.typ != itemIdentifier {
-				t.errorf("No type identifier after label, t: %#v, v: %#v", LexNames[x.typ], x.val)
-			}
-			if _, ok := types[x.val]; !ok {
+		}
+		if x.typ != itemColon {
+			t.errorf("No colon or ( after label, t: %#v, v: %#v", LexNames[x.typ], x.val)
+		}
+		x = t.next()
+		if x.typ != itemIdentifier {
+			t.errorf("No type identifier after label, t: %#v, v: %#v", LexNames[x.typ], x.val)
+		}
+		if _, ok := scalars[x.val]; !ok {
+			if _, ok := objects[x.val]; !ok {
 				t.errorf("Not declared type (yet) '%s'", x.val)
+			} else {
+				if params != nil {
+					fields[label] = &graphql.Field{
+						Type:    objects[x.val],
+						Args:    params,
+						Resolve: funcs[label],
+					}
+				} else {
+					fields[label] = &graphql.Field{
+						Type:    objects[x.val],
+						Resolve: funcs[label],
+					}
+				}
 			}
+		} else {
 			if params != nil {
 				fields[label] = &graphql.Field{
-					Type:    types[x.val],
+					Type:    scalars[x.val],
 					Args:    params,
 					Resolve: funcs[label],
 				}
 			} else {
 				fields[label] = &graphql.Field{
-					Type:    types[x.val],
+					Type:    scalars[x.val],
 					Resolve: funcs[label],
 				}
 			}
-			params = nil
 		}
+		params = nil
+	}
+	if n.val == "Query" {
 		schemaConfig.Query = graphql.NewObject(
 			graphql.ObjectConfig{
 				Name:   "RootQuery",
+				Fields: fields,
+			},
+		)
+	} else {
+		objects[n.val] = graphql.NewObject(
+			graphql.ObjectConfig{
+				Name:   n.val,
 				Fields: fields,
 			},
 		)
@@ -141,11 +170,18 @@ func (t *Tree) handleParams() graphql.FieldConfigArgument {
 			t.errorf("No colon after label, got t: %#v, v: %#v", LexNames[x.typ], x.val)
 		}
 		x = t.next()
-		if _, ok := types[x.val]; !ok {
-			t.errorf("Not declared type (yet) '%s'", x.val)
-		}
-		args[label] = &graphql.ArgumentConfig{
-			Type: types[x.val],
+		if _, ok := scalars[x.val]; !ok {
+			if _, ok := objects[x.val]; !ok {
+				t.errorf("Not declared type (yet) '%s'", x.val)
+			} else {
+				args[label] = &graphql.ArgumentConfig{
+					Type: objects[x.val],
+				}
+			}
+		} else {
+			args[label] = &graphql.ArgumentConfig{
+				Type: scalars[x.val],
+			}
 		}
 		x = t.next()
 		if x.typ == itemRightParen {
