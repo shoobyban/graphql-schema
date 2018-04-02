@@ -39,7 +39,7 @@ func main() {
 }
 ```
 
-Type declarations:
+Type declarations and arrays:
 
 ```go
 package main
@@ -61,8 +61,8 @@ func main() {
 
 			type Human {
 				name: String
-				appearsIn: String
-				starships: Starship
+				appearsIn: [String]
+				starships: [Starship]
 			}
 
 			type Query {
@@ -75,15 +75,15 @@ func main() {
 				}
 				type human struct {
 					Name      string
-					AppearsIn string
-					Starships starship
+					AppearsIn []string
+					Starships []starship
 				}
 				id, _ := strconv.Atoi(p.Args["id"].(string))
 				humans := map[int]human{
 					1002: {
 						Name:      "Han Solo",
-						AppearsIn: "NEWHOPE",
-						Starships: starship{Name: "Millenium Falcon"},
+						AppearsIn: []string{"NEWHOPE", "EMPIRE", "JEDI"},
+						Starships: []starship{{Name: "Millenium Falcon"}, {Name: "Imperial shuttle"}},
 					},
 				}
 				return humans[id], nil
