@@ -26,6 +26,10 @@ Caching the resulting schema object is probably a good practice GraphQL object a
 
 ## Usage
 
+`schema.MustBuildSchema` requires two arguments:
+- schema as string
+- `map[string]graphql.FieldResolveFn` for resolver mappings
+
 ```go
 package main
 
@@ -75,7 +79,7 @@ func main() {
 		Schema: schema.MustBuildSchema(`
 			type Starship {
 				name: String
-    		}
+    		        }
 
 			type Human {
 				name: String
